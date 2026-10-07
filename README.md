@@ -2,7 +2,7 @@
 
 Connects your agent to the Bot Receipts remote MCP server (`https://botsreceipt.app/mcp`, Streamable HTTP). It also adds a `log-receipts` skill that tells the agent when and how to report work: check pending feedback, start a run, report real milestones or blockers, submit an honest receipt for owner review, then check feedback again.
 
-Bots must call `list_pending_feedback` before `start_run` and after `submit_receipt`. On `changes_requested`, they revise the work, submit a new receipt, and call `acknowledge_feedback` once that item is handled.
+Bots must call `list_pending_feedback` before `start_run` and after `submit_receipt`, then read and `acknowledge_feedback` for **every** pending item (including accepted or archived reviews that have notes). Revise the work and submit a new receipt only for `changes_requested`, then acknowledge.
 
 ## Install
 
@@ -45,19 +45,24 @@ Keep both scopes checked, or the reporting tools won't work.
 - `start_run` — begin a run (after pending feedback is handled)
 - `report_progress` — real milestones or blockers (`running` | `blocked` | `awaiting_owner`)
 - `submit_receipt` — end of work (`complete` | `partial` | `failed` | `blocked`)
-- `list_pending_feedback` — before every `start_run` and after every `submit_receipt`
-- `get_feedback` — one pending item
-- `acknowledge_feedback` — after the item is handled (not owner acceptance)
+- `list_pending_feedback` — optional `run_id`, `cursor`; up to 50 unacknowledged items with full notes; call before every `start_run` and after every `submit_receipt`
+- `get_feedback` — optional `run_id`, `cursor`; up to 50 items of all feedback, acknowledged or not
+- `acknowledge_feedback` — after each pending item is handled (not owner acceptance)
 - `get_work_summary` — read-only overview
 
 ## Owner webhook
-Register a webhook in Bot Receipts to POST on `receipt.reviewed`, `receipt.submitted`, and `webhook.test`.
+Register an HTTPS endpoint in Bot Receipts. The service POSTs JSON on `receipt.reviewed`, `receipt.submitted`, and `webhook.test`. HTTPS only; no redirects. At-least-once delivery with retries — dedupe.
 
-- Header: `X-BotReceipts-Signature: t=<ts>,v1=<hex>`
-- `v1` is the hex HMAC-SHA256 of `` `${ts}.${rawBody}` ``
-- Reject timestamps older than 5 minutes
+**Headers**
+- `X-BotReceipts-Signature: t=<ts>,v1=<hex>` — `v1` is the hex HMAC-SHA256 of `` `${ts}.${rawBody}` `` using the endpoint secret (`brwhsec_` prefix)
+- `X-BotReceipts-Timestamp` — same unix-seconds `t`
+- `X-BotReceipts-Delivery` — delivery id for dedupe (being added in botsreceipt #25)
 
-Point the URL at a Grok Bot routine with a webhook trigger to wake the bot when a receipt is reviewed or submitted.
+Reject when `|now - t| > 300` (either direction).
+
+**Payload fields:** `id`, `type` (`receipt.reviewed` | `receipt.submitted` | `webhook.test`), `created_at`, `workspace_id`, `bot_id`, `run_id`, `receipt_id`; `receipt.reviewed` also includes `review_id`, `action`, and `note` when present. Treat the POST as a hint and call `list_pending_feedback`.
+
+A Grok Bot routine with a webhook trigger *can* wake the bot, but the routine may not verify HMAC. Prefer a small relay that verifies the signature, or use the event only as a hint to call `list_pending_feedback`.
 
 ## Legal
 - Privacy: https://botsreceipt.app/privacy
