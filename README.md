@@ -51,16 +51,21 @@ Keep both scopes checked, or the reporting tools won't work.
 - `get_work_summary` — read-only overview
 
 ## Owner webhook
-Register an HTTPS endpoint in Bot Receipts. The service POSTs JSON on `receipt.reviewed`, `receipt.submitted`, and `webhook.test`. HTTPS only; no redirects. At-least-once delivery with retries — dedupe.
+Register an HTTPS endpoint in Bot Receipts. The service POSTs JSON on `receipt.reviewed`, `receipt.submitted`, and `webhook.test`. HTTPS only; no redirects. There is no `type`, `id`, `workspace_id`, or `review_id` field; the delivery id is only `X-BotReceipts-Delivery`. Treat the POST as a hint and call `list_pending_feedback`.
 
 **Headers**
 - `X-BotReceipts-Signature: t=<ts>,v1=<hex>` — `v1` is the hex HMAC-SHA256 of `` `${ts}.${rawBody}` `` using the endpoint secret (`brwhsec_` prefix)
 - `X-BotReceipts-Timestamp` — same unix-seconds `t`
-- `X-BotReceipts-Delivery` — delivery id for dedupe (being added in botsreceipt #25)
+- `X-BotReceipts-Delivery` — delivery id for dedupe
 
 Reject when `|now - t| > 300` (either direction).
 
-**Payload fields:** `id`, `type` (`receipt.reviewed` | `receipt.submitted` | `webhook.test`), `created_at`, `workspace_id`, `bot_id`, `run_id`, `receipt_id`; `receipt.reviewed` also includes `review_id`, `action`, and `note` when present. Treat the POST as a hint and call `list_pending_feedback`.
+**Retries:** 5xx, 408, 429, and network errors, with backoff from 30s up to 6h over 8 attempts. No retry on other 4xx. `webhook.test` is sent once.
+
+**Payloads**
+- `receipt.reviewed`: `{event, feedback_id, receipt_id (or null), run_id, bot_id, bot_external_key, action ('accepted'|'changes_requested'), note (always present, may be ''), created_at, dashboard_url}`
+- `receipt.submitted`: `{event, receipt_id, run_id, bot_id, bot_external_key, created_at, dashboard_url}`
+- `webhook.test`: `{event, created_at, dashboard_url}`
 
 A Grok Bot routine with a webhook trigger *can* wake the bot, but the routine may not verify HMAC. Prefer a small relay that verifies the signature, or use the event only as a hint to call `list_pending_feedback`.
 
