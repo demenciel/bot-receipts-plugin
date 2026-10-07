@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "bot-receipts",
+  "version": "0.1.0",
+  "description": "Log honest task receipts from your bots to a Bot Receipts workspace: what was worked on, what was delivered, output links, and blockers, for owner review.",
+  "author": {
+    "name": "Alex Couture"
+  },
+  "homepage": "https://botsreceipt.app",
+  "keywords": [
+    "receipts",
+    "agents",
+    "bots",
+    "reporting",
+    "review",
+    "mcp"
+  ],
+  "repository": "https://github.com/demenciel/bot-receipts-plugin",
+  "license": "MIT"
+}
