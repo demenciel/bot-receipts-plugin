@@ -1,6 +1,6 @@
 ---
 name: log-receipts
-description: Report bot work to Bot Receipts. Use at the start of a recurring or delegated task, at real milestones or blockers, and when the task ends (complete, partial, failed, or blocked) so the owner can review what was delivered.
+description: Report bot work to Bot Receipts. Use at the start of a recurring or delegated task, at real milestones or blockers, and when the task ends (complete, partial, failed, or blocked) so the owner can review what was delivered. Always call list_pending_feedback before start_run and after submit_receipt.
 ---
 
 # Log receipts to Bot Receipts
@@ -8,10 +8,10 @@ description: Report bot work to Bot Receipts. Use at the start of a recurring or
 Bot Receipts records what a bot *claims* it did. The service runs basic checks (for example, whether JSON/CSV parses) and the owner decides what to accept. Never fabricate outputs, checks, or results.
 
 ## When to log
-- **Before work:** start a run for any task the owner expects a result from.
-- **During work:** report only real milestones or blockers, not every step.
-- **After work:** always submit a receipt, including when the work failed or was blocked.
-- **Before the next cycle:** check for pending owner feedback.
+- **Before a run:** always call `list_pending_feedback`. If any item is `changes_requested`, revise the work, `submit_receipt` again, then `acknowledge_feedback` once that item is handled. Do this before `start_run`.
+- **Before work:** `start_run` for any task the owner expects a result from.
+- **During work:** `report_progress` only for real milestones or blockers, not every step.
+- **After work:** always `submit_receipt`, including when the work failed or was blocked. Then call `list_pending_feedback` again and handle `changes_requested` the same way.
 
 ## Tools (bot-receipts MCP server)
 1. `connection_status`: first use only. Confirms access and saves a setup check.
@@ -20,8 +20,15 @@ Bot Receipts records what a bot *claims* it did. The service runs basic checks (
 4. `report_progress` (`idempotency_key`, `run_id`, `message`, `state`: running | blocked | awaiting_owner).
 5. `submit_receipt` (`idempotency_key`, `run_id`, `title`, `summary`, `delivered`, `state`: complete | partial | failed | blocked). Optional fields: `limitations`, `incomplete_items[]`, `blockers[]`, `criteria_responses[]` (`id`, `state`: met | not_met | unknown, `explanation`), and `outputs[]` (up to 15).
    - Output `format: "link"` needs an HTTPS `url`. `"reference"` needs an `identifier`. `text | markdown | csv | json` need `content` (32 KB max each, 96 KB total).
-6. `list_pending_feedback` / `get_feedback`, then `acknowledge_feedback` (`idempotency_key`, `feedback_id`). Acknowledging does not mean the work was accepted.
-7. `get_work_summary`: read-only overview.
+6. `list_pending_feedback`: required before every `start_run` and after every `submit_receipt`.
+7. `get_feedback`: fetch one pending item when you need the full note.
+8. `acknowledge_feedback` (`idempotency_key`, `feedback_id`): call only after the item is handled. Acknowledging does not mean the owner accepted the work.
+9. `get_work_summary`: read-only overview.
+
+For `changes_requested`, revise the work, submit a new receipt, then acknowledge. Do not acknowledge first.
+
+## Owner webhook
+Owners can register a webhook that Bot Receipts POSTs on `receipt.reviewed`, `receipt.submitted`, and `webhook.test`. Verify `X-BotReceipts-Signature: t=<ts>,v1=<hex>` where `v1` is the hex HMAC-SHA256 of `` `${ts}.${rawBody}` ``. Reject timestamps older than 5 minutes. Point the URL at a Grok Bot routine with a webhook trigger to wake the bot when a receipt is reviewed or submitted.
 
 ## Rules
 - Use a stable `idempotency_key` (8 to 128 chars, `[A-Za-z0-9_.:-]`). Reuse the same key and payload when you retry.
